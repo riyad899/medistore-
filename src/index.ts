@@ -1,7 +1,8 @@
-import express, { Application } from 'express';
+import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import authRoutes from './routes/auth.routes';
+import { toNodeHandler } from "better-auth/node";
+import { auth } from './lib/auth';
 import medicineRoutes from './routes/medicine.routes';
 import categoryRoutes from './routes/category.routes';
 import orderRoutes from './routes/order.routes';
@@ -13,13 +14,32 @@ import { errorHandler } from './middleware/errorHandler';
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
-// Middleware
+// CORS must be applied early so preflight requests are handled
 app.use(cors({
     origin: process.env.CORS_ORIGIN || '*',
     credentials: true,
 }));
+
+// ── Better Auth routes ──────────────────────────────────────────────
+// IMPORTANT: Mount BEFORE express.json() — better-auth parses its own
+// request bodies and express.json() can interfere with that.
+// Mount directly on `app` (not via Router) because Express Routers
+// strip the mount prefix from req.url, which breaks toNodeHandler.
+app.all("/api/auth/*", async (req: Request, res: Response) => {
+    // Some clients call `/sign-up` or `/sign-in` without the `/email` suffix.
+    // Better Auth expects `/sign-up/email` and `/sign-in/email`.
+    if (req.url === "/api/auth/sign-up") {
+        req.url = "/api/auth/sign-up/email";
+    } else if (req.url === "/api/auth/sign-in") {
+        req.url = "/api/auth/sign-in/email";
+    }
+
+    return toNodeHandler(auth)(req as any, res as any);
+});
+
+// ── Body parsing (after auth) ───────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -40,7 +60,6 @@ app.get('/', (_req, res) => {
     });
 });
 
-app.use('/api/auth', authRoutes);
 app.use('/api/medicines', medicineRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);

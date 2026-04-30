@@ -1,16 +1,61 @@
+import 'dotenv/config';
 import { PrismaClient, UserRole } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
+import { hashPassword } from 'better-auth/crypto';
 
-const prisma = new PrismaClient();
+if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set');
+}
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+});
+
+const adapter = new PrismaPg(pool);
+
+const prisma = new PrismaClient({
+    adapter,
+});
 
 async function main() {
     console.log('🌱 Starting database seeding...');
 
+    const upsertCredentialAccount = async (
+        userId: string,
+        email: string,
+        passwordHash: string
+    ) => {
+        await prisma.account.upsert({
+            where: {
+                providerId_accountId: {
+                    providerId: 'credential',
+                    accountId: email,
+                },
+            },
+            update: {
+                userId,
+                password: passwordHash,
+            },
+            create: {
+                userId,
+                providerId: 'credential',
+                accountId: email,
+                password: passwordHash,
+            },
+        });
+    };
+
     // Create Admin User
-    const adminPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'Admin@123', 10);
+    const adminPassword = await hashPassword(process.env.ADMIN_PASSWORD || 'Admin@123');
     const admin = await prisma.user.upsert({
         where: { email: process.env.ADMIN_EMAIL || 'admin@medistore.com' },
-        update: {},
+        update: {
+            password: adminPassword,
+            emailVerified: true,
+            role: UserRole.ADMIN,
+            isActive: true,
+        },
         create: {
             email: process.env.ADMIN_EMAIL || 'admin@medistore.com',
             password: adminPassword,
@@ -18,6 +63,8 @@ async function main() {
             name: 'Admin User',
             phone: '+1234567890',
             address: 'Admin Office, MediStore HQ',
+            emailVerified: true,
+            isActive: true,
         },
     });
     console.log('✅ Admin user created:', admin.email);
@@ -43,10 +90,15 @@ async function main() {
     console.log('✅ Categories created:', categories.length);
 
     // Create Sample Seller
-    const sellerPassword = await bcrypt.hash('Seller@123', 10);
+    const sellerPassword = await hashPassword('Seller@123');
     const seller = await prisma.user.upsert({
         where: { email: 'seller@medistore.com' },
-        update: {},
+        update: {
+            password: sellerPassword,
+            emailVerified: true,
+            role: UserRole.SELLER,
+            isActive: true,
+        },
         create: {
             email: 'seller@medistore.com',
             password: sellerPassword,
@@ -54,6 +106,8 @@ async function main() {
             name: 'Sample Pharmacy',
             phone: '+1234567891',
             address: '123 Pharmacy Street, Medical District',
+            emailVerified: true,
+            isActive: true,
         },
     });
     console.log('✅ Sample seller created:', seller.email);
@@ -138,10 +192,15 @@ async function main() {
     console.log('✅ Sample medicines created:', medicines.length);
 
     // Create Sample Customer
-    const customerPassword = await bcrypt.hash('Customer@123', 10);
+    const customerPassword = await hashPassword('Customer@123');
     const customer = await prisma.user.upsert({
         where: { email: 'customer@example.com' },
-        update: {},
+        update: {
+            password: customerPassword,
+            emailVerified: true,
+            role: UserRole.CUSTOMER,
+            isActive: true,
+        },
         create: {
             email: 'customer@example.com',
             password: customerPassword,
@@ -149,9 +208,16 @@ async function main() {
             name: 'John Doe',
             phone: '+1234567892',
             address: '456 Customer Lane, City Center',
+            emailVerified: true,
+            isActive: true,
         },
     });
     console.log('✅ Sample customer created:', customer.email);
+
+    await upsertCredentialAccount(admin.id, admin.email, adminPassword);
+    await upsertCredentialAccount(seller.id, seller.email, sellerPassword);
+    await upsertCredentialAccount(customer.id, customer.email, customerPassword);
+    console.log('✅ Credential accounts synced for test users');
 
     console.log('🎉 Database seeding completed successfully!');
     console.log('\n📝 Test Accounts:');

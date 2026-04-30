@@ -23,8 +23,14 @@ export const auth = betterAuth({
     },
     socialProviders: {
         google: {
-            clientId: process.env.GOOGLE_CLIENT_ID || "",
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+            clientId:
+                process.env.GOOGLE_CLIENT_ID ||
+                process.env.Google_Client_ID ||
+                "",
+            clientSecret:
+                process.env.GOOGLE_CLIENT_SECRET ||
+                process.env.Google_Client_Secret ||
+                "",
         },
     },
     user: {
@@ -49,5 +55,13 @@ export const auth = betterAuth({
             },
         }
     },
-    trustedOrigins: [process.env.FRONTEND_URL || "http://localhost:3000"],
+    trustedOrigins: [
+        process.env.FRONTEND_URL || "http://localhost:3000",
+        process.env.BETTER_AUTH_URL || "http://localhost:5001",
+    ],
+    advanced: {
+        // Allow requests without an Origin header (Postman, curl, mobile apps).
+        // Only disable in non-production; production keeps CSRF protection active.
+        disableCSRFCheck: process.env.NODE_ENV !== "production",
+    },
 });

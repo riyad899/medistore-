@@ -7,7 +7,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -33,7 +32,7 @@ model User {
   phone         String?
   address       String?
   image         String?   // Profile picture from OAuth
-  emailVerified DateTime? // Email verification timestamp
+  emailVerified Boolean   @default(false)
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -48,36 +47,39 @@ model User {
   @@map("users")
 }
 
-// OAuth accounts (Google, Facebook, etc.)
+// Better Auth accounts (credential + OAuth)
 model Account {
-  id                String  @id @default(uuid())
-  userId            String
-  type              String  // oauth, email, etc.
-  provider          String  // google, facebook, etc.
-  providerAccountId String  // ID from the provider
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
+  id                    String    @id @default(uuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerAccountId])
+  @@unique([providerId, accountId])
   @@index([userId])
   @@map("accounts")
 }
 
-// Session management
+// Better Auth sessions
 model Session {
-  id           String   @id @default(uuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -85,16 +87,16 @@ model Session {
   @@map("sessions")
 }
 
-// Email verification and password reset tokens
-model VerificationToken {
+// Better Auth verification tokens
+model Verification {
   id         String   @id @default(uuid())
   identifier String   // Email address
-  token      String   @unique
-  type       String   // email_verification, password_reset
-  expires    DateTime
+  value      String
+  expiresAt  DateTime
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  @@unique([identifier, token, type])
+  @@index([identifier])
   @@map("verification_tokens")
 }
 

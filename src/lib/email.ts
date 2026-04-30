@@ -1,14 +1,47 @@
 import nodemailer from 'nodemailer';
 
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_PORT === '465',
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    },
-});
+const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_SENDER_SMTP_HOST;
+const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_SENDER_SMTP_PORT) || 587;
+const smtpUser = process.env.SMTP_USER || process.env.EMAIL_SENDER_SMTP_USER;
+const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_SENDER_SMTP_PASS;
+const smtpFromEmail = process.env.SMTP_FROM_EMAIL || process.env.EMAIL_SENDER_SMTP_FROM || smtpUser;
+const smtpFromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_SENDER_SMTP_FROM_NAME || process.env.EMAIL_SENDER_NAME || '';
+
+let _transporter: nodemailer.Transporter | null = null;
+let _isUsingEthereal = false;
+
+const getTransporter = async (): Promise<nodemailer.Transporter> => {
+    if (_transporter) return _transporter;
+
+    // If SMTP credentials are provided, use them.
+    if (smtpHost && smtpUser && smtpPass) {
+        _transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: smtpPort,
+            secure: String(smtpPort) === '465',
+            auth: { user: smtpUser, pass: smtpPass },
+        });
+        _isUsingEthereal = false;
+        return _transporter;
+    }
+
+    // Fallback: create an Ethereal test account in development/testing.
+    try {
+        const testAccount = await nodemailer.createTestAccount();
+        _transporter = nodemailer.createTransport({
+            host: testAccount.smtp.host,
+            port: testAccount.smtp.port,
+            secure: testAccount.smtp.secure,
+            auth: { user: testAccount.user, pass: testAccount.pass },
+        });
+        _isUsingEthereal = true;
+        console.warn('[Email] No SMTP config found — using Ethereal test account (development only).');
+        return _transporter;
+    } catch (err) {
+        console.error('[Email] Failed to create Ethereal account:', err);
+        throw err;
+    }
+};
 
 interface EmailOptions {
     to: string;
@@ -18,16 +51,23 @@ interface EmailOptions {
 
 export const sendEmail = async ({ to, subject, html }: EmailOptions) => {
     try {
-        const info = await transporter.sendMail({
-            from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
-            to,
-            subject,
-            html,
-        });
+        const transporter = await getTransporter();
+        const fromHeader = smtpFromName ? `"${smtpFromName}" <${smtpFromEmail}>` : `${smtpFromEmail}`;
+
+        const info = await transporter.sendMail({ from: fromHeader, to, subject, html });
+
+        if (_isUsingEthereal) {
+            const preview = nodemailer.getTestMessageUrl(info);
+            console.log('Email sent (Ethereal). Preview URL: %s', preview);
+            // Return preview URL to callers for convenience
+            return { info, preview };
+        }
+
         console.log('Email sent: %s', info.messageId);
-        return info;
+        return { info };
     } catch (error) {
         console.error('Email send error:', error);
+        // Do not crash the process — bubble error to caller but keep server alive.
         throw error;
     }
 };
