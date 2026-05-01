@@ -70,11 +70,13 @@ app.use('/api/reviews', reviewRoutes);
 // Error handling
 app.use(errorHandler);
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`🚀 MediStore API server running on port ${PORT}`);
-    console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔗 API URL: http://localhost:${PORT}`);
-});
+// Start server only when running locally (not in serverless)
+if (!process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`🚀 MediStore API server running on port ${PORT}`);
+        console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`🔗 API URL: http://localhost:${PORT}`);
+    });
+}
 
 export default app;
